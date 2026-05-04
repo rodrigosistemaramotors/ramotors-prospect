@@ -1,0 +1,11 @@
+﻿olx:
+  card_listagem: '[data-testid="adcard"]'
+  link_anuncio: 'a'
+  botao_telefone: 'button:has-text("telefone")'
+  preco: '[data-testid="ad-price"]'
+  localizacao: '[aria-label*="Localizacao"]'
+
+usadofacil:
+  card_listagem: '.car-card'
+  link_anuncio: 'a.car-link'
+  preco: '.price'

@@ -1,0 +1,14 @@
+﻿celery==5.4.0
+redis==5.2.0
+playwright==1.49.0
+playwright-stealth==1.0.6
+httpx==0.28.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+loguru==0.7.3
+pyyaml==6.0.2
+beautifulsoup4==4.12.3
+python-dateutil==2.9.0
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+tenacity==9.0.0
