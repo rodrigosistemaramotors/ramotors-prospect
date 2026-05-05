@@ -42,6 +42,37 @@ def _normalizar_telefone(numero: str) -> str:
     return n
 
 
+def _variacoes_telefone_br(numero: str) -> list[str]:
+    """
+    Retorna possiveis variacoes do telefone para celulares brasileiros.
+
+    Z-API/WhatsApp as vezes descarta o '9' inicial do celular (formato antigo
+    de 8 digitos vs novo de 9 digitos pos-2012). Pra match no banco a gente
+    tenta as duas formas.
+
+    Exemplos:
+      '+5565996236037' (13 chars) -> ['+5565996236037', '+556596236037']
+      '+556596236037' (12 chars)  -> ['+556596236037', '+5565996236037']
+    """
+    n = _normalizar_telefone(numero)
+    variantes = [n]
+
+    if n.startswith("+55") and len(n) >= 12:
+        digits = n[3:]  # remove '+55'
+        if len(digits) == 10:
+            # Sem o '9' (DDD + 8 digitos). Tenta adicionar o '9'.
+            area = digits[:2]
+            sub = digits[2:]
+            variantes.append(f"+55{area}9{sub}")
+        elif len(digits) == 11 and digits[2] == "9":
+            # Com o '9'. Tenta sem.
+            area = digits[:2]
+            sub = digits[3:]
+            variantes.append(f"+55{area}{sub}")
+
+    return variantes
+
+
 def _extrair_conteudo(body: dict) -> str | None:
     """Extrai o texto da mensagem do payload Z-API. Retorna None se nao houver."""
     if body.get("text"):
@@ -97,13 +128,17 @@ async def receber_zapi(
     if not conteudo:
         return {"status": "ignorado_sem_conteudo"}
 
-    # 4. Encontrar conversa ativa
+    # 4. Encontrar conversa ativa.
+    # Tenta variacoes do telefone (com e sem '9' do celular BR) porque
+    # a Z-API normaliza pro formato antigo (12 digitos) e o banco pode
+    # ter o formato novo (13 digitos).
     telefone = _normalizar_telefone(phone_raw)
+    variantes = _variacoes_telefone_br(phone_raw)
     instance_id = body.get("instanceId", "default")
 
     q = await db.execute(
         select(Conversa)
-        .where(Conversa.telefone == telefone)
+        .where(Conversa.telefone.in_(variantes))
         .where(Conversa.estado.notin_([
             EstadoConversa.ENCERRADA_NEGATIVA,
             EstadoConversa.ENCERRADA_POSITIVA,
@@ -114,7 +149,10 @@ async def receber_zapi(
     )
     conversa = q.scalar_one_or_none()
     if not conversa:
-        logger.info(f"Z-API webhook: conversa nao encontrada para {telefone}")
+        logger.info(
+            f"Z-API webhook: conversa nao encontrada para {telefone} "
+            f"(tentou variantes: {variantes})"
+        )
         return {"status": "ignorado_conversa_inexistente"}
 
     # 5. Persistir mensagem de entrada
