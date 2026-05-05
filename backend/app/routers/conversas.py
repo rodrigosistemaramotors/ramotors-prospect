@@ -30,6 +30,51 @@ async def listar(
     result = await db.execute(q.limit(limit))
     return list(result.scalars())
 
+@router.get("/proxima-pendente", response_model=ProximaPendenteOutput | None)
+async def proxima_pendente(
+    db: AsyncSession = Depends(get_db),
+    _w = Depends(require_worker),
+):
+    timeout_envio = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+    q = await db.execute(
+        select(Mensagem, Conversa, InstanciaWhatsapp)
+        .join(Conversa, Mensagem.conversa_id == Conversa.id)
+        .join(InstanciaWhatsapp, Conversa.instancia_id == InstanciaWhatsapp.id)
+        .where(Mensagem.direcao == DirecaoMensagem.SAIDA)
+        .where(Mensagem.enviada_em.is_(None))
+        .where(
+            (Mensagem.entregue_para_envio_em.is_(None))
+            | (Mensagem.entregue_para_envio_em < timeout_envio)
+        )
+        .where(Conversa.estado.in_([
+            EstadoConversa.INICIADA,
+            EstadoConversa.AGUARDANDO_RESPOSTA,
+            EstadoConversa.EM_NEGOCIACAO,
+            EstadoConversa.QUALIFICADA,
+        ]))
+        .where(InstanciaWhatsapp.status == "ATIVA")
+        .order_by(Mensagem.criada_em)
+        .limit(1)
+        .with_for_update(of=Mensagem, skip_locked=True)
+    )
+    row = q.first()
+    if not row:
+        return None
+
+    mensagem, conversa, instancia = row
+    mensagem.entregue_para_envio_em = datetime.now(timezone.utc)
+    await db.commit()
+
+    return ProximaPendenteOutput(
+        conversa_id=conversa.id,
+        mensagem_id=mensagem.id,
+        instancia_id=instancia.id,
+        instancia_evolution_id=instancia.evolution_instance_id,
+        telefone_destino=conversa.telefone,
+        mensagem=mensagem.conteudo,
+    )
+
 @router.get("/{conversa_id}", response_model=ConversaRead)
 async def detalhe(
     conversa_id: int,
@@ -150,51 +195,6 @@ async def gerar_mensagens_pendentes(
                 falhas += 1
 
     return {"geradas": geradas, "falhas": falhas}
-
-@router.get("/proxima-pendente", response_model=ProximaPendenteOutput | None)
-async def proxima_pendente(
-    db: AsyncSession = Depends(get_db),
-    _w = Depends(require_worker),
-):
-    timeout_envio = datetime.now(timezone.utc) - timedelta(minutes=10)
-
-    q = await db.execute(
-        select(Mensagem, Conversa, InstanciaWhatsapp)
-        .join(Conversa, Mensagem.conversa_id == Conversa.id)
-        .join(InstanciaWhatsapp, Conversa.instancia_id == InstanciaWhatsapp.id)
-        .where(Mensagem.direcao == DirecaoMensagem.SAIDA)
-        .where(Mensagem.enviada_em.is_(None))
-        .where(
-            (Mensagem.entregue_para_envio_em.is_(None))
-            | (Mensagem.entregue_para_envio_em < timeout_envio)
-        )
-        .where(Conversa.estado.in_([
-            EstadoConversa.INICIADA,
-            EstadoConversa.AGUARDANDO_RESPOSTA,
-            EstadoConversa.EM_NEGOCIACAO,
-            EstadoConversa.QUALIFICADA,
-        ]))
-        .where(InstanciaWhatsapp.status == "ATIVA")
-        .order_by(Mensagem.criada_em)
-        .limit(1)
-        .with_for_update(of=Mensagem, skip_locked=True)
-    )
-    row = q.first()
-    if not row:
-        return None
-
-    mensagem, conversa, instancia = row
-    mensagem.entregue_para_envio_em = datetime.now(timezone.utc)
-    await db.commit()
-
-    return ProximaPendenteOutput(
-        conversa_id=conversa.id,
-        mensagem_id=mensagem.id,
-        instancia_id=instancia.id,
-        instancia_evolution_id=instancia.evolution_instance_id,
-        telefone_destino=conversa.telefone,
-        mensagem=mensagem.conteudo,
-    )
 
 @router.post("/mensagens/{mensagem_id}/marcar-enviada")
 async def marcar_enviada(
