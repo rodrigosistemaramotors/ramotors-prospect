@@ -1,13 +1,23 @@
 ﻿"""
 Servidor HTTP que recebe webhooks da Evolution API e enfileira processamento.
 """
+import base64
+from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException, Header
 from loguru import logger
 from datetime import datetime, timezone
 from app.celery_app import celery_app
 from app.config import settings
 
-app = FastAPI(title="RA Motors Webhook Receiver", version="2.1.0")
+app = FastAPI(title="RA Motors Webhook Receiver", version="2.2.0")
+
+# Diretorio onde QR codes recebidos via webhook sao salvos como PNG.
+# Em docker-compose este path e mapeado para ./qrcodes do host.
+QRCODE_DIR = Path("/qrcodes")
+try:
+    QRCODE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.warning(f"Nao foi possivel criar {QRCODE_DIR}: {e}")
 
 _eventos_processados: set[str] = set()
 _MAX_DEDUP_SET = 10_000
@@ -68,8 +78,36 @@ async def receber_evolution_webhook(
         return {"status": "ok"}
     if evento in ("connection.update", "CONNECTION_UPDATE"):
         return await _processar_connection_update(data, instance)
+    if evento in ("qrcode.updated", "QRCODE_UPDATED"):
+        return await _processar_qrcode_updated(data, instance)
 
     return {"status": "evento_ignorado", "evento": evento}
+
+
+async def _processar_qrcode_updated(data: dict, instance: str) -> dict:
+    """Salva QR Code recebido via webhook como PNG em /qrcodes/{instance}.png."""
+    qrcode_obj = data.get("qrcode", data) or {}
+    b64 = qrcode_obj.get("base64") or data.get("base64") or ""
+
+    if not b64:
+        logger.warning(f"QRCODE_UPDATED sem base64. Payload: {data}")
+        return {"status": "qrcode_sem_base64"}
+
+    if "," in b64:
+        b64 = b64.split(",", 1)[1]
+
+    try:
+        img_bytes = base64.b64decode(b64)
+        nome_arquivo = (instance or "default").replace("/", "_") + ".png"
+        path = QRCODE_DIR / nome_arquivo
+        path.write_bytes(img_bytes)
+        logger.success(
+            f"QR Code de {instance} salvo em {path} ({len(img_bytes)} bytes)"
+        )
+        return {"status": "qrcode_salvo", "path": str(path)}
+    except Exception as e:
+        logger.exception(f"Falha ao salvar QR Code de {instance}: {e}")
+        return {"status": "erro_salvar_qrcode", "erro": str(e)}
 
 
 async def _processar_messages_upsert(data: dict, instance: str) -> dict:

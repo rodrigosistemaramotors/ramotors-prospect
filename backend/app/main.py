@@ -2,7 +2,7 @@
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from loguru import logger
-from app.routers import auth, anuncios, conversas, leads, instancias, opt_outs, metricas
+from app.routers import auth, anuncios, conversas, leads, instancias, opt_outs, metricas, webhook_zapi
 from app.redis_client import close_redis
 
 @asynccontextmanager
@@ -29,6 +29,7 @@ app.include_router(leads.router)
 app.include_router(instancias.router)
 app.include_router(opt_outs.router)
 app.include_router(metricas.router)
+app.include_router(webhook_zapi.router)
 
 @app.get("/")
 async def root():

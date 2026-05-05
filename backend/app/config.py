@@ -23,6 +23,10 @@ class Settings(BaseSettings):
 
     worker_api_key: str
 
+    # Z-API webhook security: o secret e enviado pela Z-API via query string
+    # ?secret=... configurado no painel Z-API.
+    zapi_webhook_secret: str = "trocar-pra-string-aleatoria-de-32-chars"
+
     @field_validator("database_url", mode="before")
     @classmethod
     def _normalizar_database_url(cls, v: str) -> str:

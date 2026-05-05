@@ -1,4 +1,4 @@
-﻿from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -7,8 +7,14 @@ class WorkerSettings(BaseSettings):
     backend_url: str
     worker_api_key: str
 
-    evolution_url: str = "http://evolution-api:8080"
-    evolution_key: str
+    # Z-API (https://z-api.io) - substitui Evolution API
+    zapi_instance_id: str
+    zapi_token: str
+    zapi_client_token: str = ""  # opcional, vazio = sem header
+
+    # Compat: deixados para nao quebrar leitura de .env antigo
+    evolution_url: str = ""
+    evolution_key: str = ""
 
     headless: bool = True
     rate_limit_segundos: int = 3
