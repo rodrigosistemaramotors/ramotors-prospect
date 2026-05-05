@@ -43,6 +43,69 @@ def _normalizar_telefone(numero: str) -> str:
     return n
 
 
+def _formatar_notificacao_lead(
+    lead: Lead, anuncio, conversa: Conversa, score: int, classificacao: dict
+) -> str:
+    """Monta mensagem de notificacao formatada pro WhatsApp do dono."""
+    modelo = anuncio.modelo if anuncio and anuncio.modelo else "veiculo"
+    ano = f" {anuncio.ano}" if anuncio and anuncio.ano else ""
+    preco_fmt = (
+        f"R$ {float(anuncio.preco):,.0f}".replace(",", ".")
+        if anuncio and anuncio.preco
+        else "preco nao informado"
+    )
+    cidade = anuncio.cidade if anuncio and anuncio.cidade else "-"
+    nome = lead.nome or "(sem nome)"
+    telefone = lead.telefone or conversa.telefone
+    resumo = classificacao.get("resumo") or "(sem resumo)"
+    sugestao = classificacao.get("proxima_acao_sugerida") or "Contatar agora"
+    url_anuncio = anuncio.url if anuncio and anuncio.url else "(sem URL)"
+
+    return (
+        f"*NOVO LEAD QUENTE - RA Motors*\n"
+        f"\n"
+        f"*Telefone:* {telefone}\n"
+        f"*Nome:* {nome}\n"
+        f"*Carro:* {modelo}{ano} - {preco_fmt}\n"
+        f"*Cidade:* {cidade}\n"
+        f"*Score:* {score}/100\n"
+        f"\n"
+        f"*Resumo:* {resumo}\n"
+        f"\n"
+        f"*Sugestao:* {sugestao}\n"
+        f"\n"
+        f"*Anuncio:* {url_anuncio}\n"
+        f"\n"
+        f"_Lead ID #{lead.id} - Conversa #{conversa.id}_"
+    )
+
+
+async def _notificar_lead_quente(
+    db: AsyncSession,
+    lead: Lead,
+    conversa: Conversa,
+    score: int,
+    classificacao: dict,
+):
+    """Manda mensagem de notificacao pro WhatsApp do dono via Z-API."""
+    if not settings.notification_phone:
+        logger.info("notification_phone nao configurado - pulando notificacao de lead")
+        return
+    try:
+        anuncio = await db.get(Anuncio, conversa.anuncio_id) if conversa.anuncio_id else None
+        msg = _formatar_notificacao_lead(lead, anuncio, conversa, score, classificacao)
+        zapi = BackendZAPIClient()
+        sucesso = await zapi.enviar_texto(settings.notification_phone, msg)
+        if sucesso:
+            logger.success(
+                f"Notificacao de lead {lead.id} enviada pra {settings.notification_phone}"
+            )
+        else:
+            logger.error(f"Falha ao notificar lead {lead.id}")
+    except Exception as e:
+        logger.exception(f"Erro ao notificar lead: {e}")
+
+
 def _variacoes_telefone_br(numero: str) -> list[str]:
     """
     Retorna possiveis variacoes do telefone para celulares brasileiros.
@@ -229,6 +292,7 @@ async def receber_zapi(
     categoria = classificacao["categoria"]
     proxima_resposta = None
 
+    novo_lead_criado = None  # rastreia se um lead novo foi criado nesta requisicao
     if categoria == "INTERESSADO":
         conversa.estado = EstadoConversa.QUALIFICADA
         if anuncio:
@@ -236,8 +300,9 @@ async def receber_zapi(
         lead_q = await db.execute(
             select(Lead).where(Lead.conversa_id == conversa.id)
         )
-        if not lead_q.scalar_one_or_none():
-            lead = Lead(
+        lead_existente = lead_q.scalar_one_or_none()
+        if not lead_existente:
+            novo_lead_criado = Lead(
                 conversa_id=conversa.id,
                 anuncio_id=anuncio.id if anuncio else None,
                 score_interesse=score,
@@ -247,7 +312,7 @@ async def receber_zapi(
                 sugestao_abordagem=classificacao.get("proxima_acao_sugerida"),
                 status_funil=StatusFunil.NOVO,
             )
-            db.add(lead)
+            db.add(novo_lead_criado)
         proxima_resposta = await groq.gerar_resposta_contextual(
             historico_dict, conteudo, contexto
         )
@@ -310,6 +375,14 @@ async def receber_zapi(
 
     conversa.ultima_mensagem_em = datetime.now(timezone.utc)
     await db.commit()
+
+    # 9b. Notificar dono via WhatsApp se um NOVO lead foi criado
+    if novo_lead_criado is not None:
+        # refresh pra pegar o id do lead recem-criado
+        await db.refresh(novo_lead_criado)
+        await _notificar_lead_quente(
+            db, novo_lead_criado, conversa, score, classificacao
+        )
 
     # Envio direto (so para respostas - mensagem inicial continua via loop-envios)
     enviada_direto = False

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     zapi_token: str = ""
     zapi_client_token: str = ""
 
+    # Telefone que recebe notificacao quando um lead vira INTERESSADO.
+    # Formato sem '+': 5565992823978
+    notification_phone: str = ""
+
     @field_validator("database_url", mode="before")
     @classmethod
     def _normalizar_database_url(cls, v: str) -> str:
