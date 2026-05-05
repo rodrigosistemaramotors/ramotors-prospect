@@ -64,6 +64,17 @@ async def proxima_pendente(
 
     mensagem, conversa, instancia = row
     mensagem.entregue_para_envio_em = datetime.now(timezone.utc)
+
+    # E inicial se nao ha nenhuma SAIDA anterior ja enviada nessa conversa
+    saida_anterior = await db.execute(
+        select(Mensagem.id)
+        .where(Mensagem.conversa_id == conversa.id)
+        .where(Mensagem.direcao == DirecaoMensagem.SAIDA)
+        .where(Mensagem.enviada_em.isnot(None))
+        .limit(1)
+    )
+    is_inicial = saida_anterior.scalar_one_or_none() is None
+
     await db.commit()
 
     return ProximaPendenteOutput(
@@ -73,6 +84,7 @@ async def proxima_pendente(
         instancia_evolution_id=instancia.evolution_instance_id,
         telefone_destino=conversa.telefone,
         mensagem=mensagem.conteudo,
+        is_inicial=is_inicial,
     )
 
 @router.get("/{conversa_id}", response_model=ConversaRead)

@@ -22,9 +22,9 @@ class WorkerSettings(BaseSettings):
 
     timezone_str: str = "America/Cuiaba"
 
-    delay_envio_inicial_min: int = 60
-    delay_envio_inicial_max: int = 180
-    delay_resposta_min: int = 15
-    delay_resposta_max: int = 45
+    delay_envio_inicial_min: int = 30   # antes 60
+    delay_envio_inicial_max: int = 90   # antes 180
+    delay_resposta_min: int = 5         # antes 15
+    delay_resposta_max: int = 15        # antes 45
 
 settings = WorkerSettings()

@@ -288,6 +288,13 @@ async def receber_zapi(
                 motivo="Opt-out via classificacao IA",
                 origem="auto_ia",
             ))
+    elif categoria == "IGNOROU":
+        # Mensagem nao classificavel mas conteudo presente -> tenta retomar
+        # via resposta contextual leve. Mantem estado atual da conversa.
+        if conteudo and len(conteudo.strip()) > 0:
+            proxima_resposta = await groq.gerar_resposta_contextual(
+                historico_dict, conteudo, contexto
+            )
 
     # 9. Persistir resposta como pendente. Loop-envios vai pegar e enviar.
     if proxima_resposta:

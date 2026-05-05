@@ -28,13 +28,19 @@ Recebe a ultima mensagem de um proprietario de veiculo respondendo a
 uma proposta de consignacao. Classifique a intencao e devolva JSON.
 
 CATEGORIAS:
-- INTERESSADO: clara abertura, faz pergunta sobre o servico
-- TALVEZ: morna, ambigua, "depende", "nao sei", "talvez"
-- PEDIU_INFO: pergunta especifica sobre comissao, prazo, processo
-- RECUSOU: declina educadamente
+- INTERESSADO: abertura clara, "quero saber mais", "tenho interesse", "sim", "como funciona?"
+- PEDIU_INFO: pergunta especifica sobre comissao, prazo, processo, valor
+- TALVEZ: ambigua, hesitacao, saudacao, retomada de conversa, ainda em duvida.
+  Exemplos: "boa tarde", "estao ai?", "oi", "tudo bem?", "depende", "nao sei",
+  "talvez", "vou pensar", "me explica de novo", "como assim?".
+  IMPORTANTE: saudacoes, perguntas de presenca/disponibilidade ("ainda esta?",
+  "bom dia", "como vai?") sao SEMPRE TALVEZ - nao IGNOROU.
+- RECUSOU: declina explicitamente, "nao tenho interesse", "nao quero", "deixa pra la"
 - JA_VENDEU: informa que o carro ja foi vendido
-- OPT_OUT: pede pra nao receber mais mensagens
-- IGNOROU: vazia, sticker sem contexto, audio
+- OPT_OUT: pede pra nao receber mais mensagens, "PARAR", "para de mandar", "me tira"
+- IGNOROU: APENAS quando a mensagem e tecnicamente vazia ou nao-textual:
+  vazia (""), so emoji sem texto, sticker, audio sem transcricao,
+  imagem sem legenda. Mensagens com texto NUNCA sao IGNOROU.
 
 Devolva APENAS JSON neste formato:
 {

@@ -36,6 +36,8 @@ class ProximaPendenteOutput(BaseModel):
     instancia_evolution_id: str
     telefone_destino: str
     mensagem: str
+    is_inicial: bool = False  # True = primeiro contato, usar delay longo
+                              # False = resposta a interacao, usar delay curto
 
 class IntervencaoInput(BaseModel):
     mensagem: str = Field(min_length=1, max_length=2000)

@@ -31,7 +31,8 @@ def main():
         try:
             pendente = backend.proxima_pendente()
             if not pendente:
-                for _ in range(60):
+                # Polling mais rapido: 15s (era 60s)
+                for _ in range(15):
                     if not _running:
                         break
                     time.sleep(1)
@@ -39,13 +40,22 @@ def main():
 
             mensagem_id = pendente["mensagem_id"]
             conversa_id = pendente["conversa_id"]
+            is_inicial = pendente.get("is_inicial", True)
 
-            delay = random.uniform(
-                settings.delay_envio_inicial_min,
-                settings.delay_envio_inicial_max,
-            )
+            if is_inicial:
+                delay = random.uniform(
+                    settings.delay_envio_inicial_min,
+                    settings.delay_envio_inicial_max,
+                )
+                tipo = "inicial"
+            else:
+                delay = random.uniform(
+                    settings.delay_resposta_min,
+                    settings.delay_resposta_max,
+                )
+                tipo = "resposta"
             logger.info(
-                f"Enviando msg {mensagem_id} (conversa {conversa_id}) em {delay:.0f}s"
+                f"Enviando msg {mensagem_id} (conversa {conversa_id}, {tipo}) em {delay:.0f}s"
             )
             slept = 0.0
             while slept < delay and _running:
