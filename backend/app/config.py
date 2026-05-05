@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # ?secret=... configurado no painel Z-API.
     zapi_webhook_secret: str = "trocar-pra-string-aleatoria-de-32-chars"
 
+    # Z-API credenciais pro backend mandar resposta direta (bypass loop-envios)
+    # Reduz latencia de ~25s pra ~3-5s.
+    zapi_instance_id: str = ""
+    zapi_token: str = ""
+    zapi_client_token: str = ""
+
     @field_validator("database_url", mode="before")
     @classmethod
     def _normalizar_database_url(cls, v: str) -> str:

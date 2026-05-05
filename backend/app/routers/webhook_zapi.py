@@ -27,6 +27,7 @@ from app.models import (
     Anuncio, StatusContato, OptOut, Lead, StatusFunil,
 )
 from app.services.ia_groq import GroqClient
+from app.services.zapi_client import BackendZAPIClient
 from app.utils.opt_out_detector import eh_opt_out
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -296,22 +297,53 @@ async def receber_zapi(
                 historico_dict, conteudo, contexto
             )
 
-    # 9. Persistir resposta como pendente. Loop-envios vai pegar e enviar.
+    # 9. Persistir resposta + ENVIAR DIRETO via Z-API (bypass loop-envios)
+    # Reduz latencia de resposta de ~25s pra ~3-5s.
+    msg_saida = None
     if proxima_resposta:
-        db.add(Mensagem(
+        msg_saida = Mensagem(
             conversa_id=conversa.id,
             direcao=DirecaoMensagem.SAIDA,
             conteudo=proxima_resposta,
-        ))
+        )
+        db.add(msg_saida)
 
     conversa.ultima_mensagem_em = datetime.now(timezone.utc)
     await db.commit()
+
+    # Envio direto (so para respostas - mensagem inicial continua via loop-envios)
+    enviada_direto = False
+    if proxima_resposta and msg_saida:
+        try:
+            zapi = BackendZAPIClient()
+            sucesso = await zapi.enviar_texto(conversa.telefone, proxima_resposta)
+            if sucesso:
+                from datetime import datetime as _dt
+                msg_saida.enviada_em = _dt.now(timezone.utc)
+                msg_saida.entregue_para_envio_em = _dt.now(timezone.utc)
+                # Atualiza estado da conversa pra AGUARDANDO_RESPOSTA quando faz sentido
+                if conversa.estado not in (
+                    EstadoConversa.ENCERRADA_NEGATIVA,
+                    EstadoConversa.ENCERRADA_POSITIVA,
+                    EstadoConversa.OPT_OUT,
+                ):
+                    conversa.estado = EstadoConversa.AGUARDANDO_RESPOSTA
+                await db.commit()
+                enviada_direto = True
+                logger.success(
+                    f"Resposta direta Z-API enviada para {conversa.telefone}"
+                )
+        except Exception as e:
+            logger.error(
+                f"Falha envio direto, deixando pra loop-envios: {e}"
+            )
 
     return {
         "status": "ok",
         "categoria": categoria,
         "score": score,
         "tem_resposta": bool(proxima_resposta),
+        "enviada_direto": enviada_direto,
         "conversa_id": conversa.id,
     }
 
